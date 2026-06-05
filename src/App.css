@@ -204,6 +204,22 @@ button:active {
   width: 100%;
 }
 
+.panel-button {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.score-button.secondary {
+  background: #ffffff;
+  color: var(--primary-2);
+  border: 1px solid var(--line);
+}
+
+.score-button.secondary:hover {
+  filter: none;
+  background: #f6f9ff;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

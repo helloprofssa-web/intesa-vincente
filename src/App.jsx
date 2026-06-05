@@ -106,6 +106,14 @@ function App() {
     setIsTimerRunning(true)
   }
 
+  const handleStopTimer = () => {
+    setIsTimerRunning(false)
+  }
+
+  const handleResetScore = () => {
+    setScore(0)
+  }
+
   const statusText =
     secondsLeft === 0
       ? 'Tempo scaduto'
@@ -154,6 +162,9 @@ function App() {
             <p className={`timer-value ${secondsLeft <= 10 && isTimerRunning ? 'danger' : ''}`}>
               {formatTime(secondsLeft)}
             </p>
+            <button type="button" className="panel-button" onClick={handleStopTimer}>
+              Stop
+            </button>
           </div>
 
           <div className="score-panel">
@@ -165,6 +176,13 @@ function App() {
               onClick={() => setScore((prev) => prev + 1)}
             >
               +1 punto
+            </button>
+            <button
+              type="button"
+              className="score-button secondary"
+              onClick={handleResetScore}
+            >
+              Reset punteggio
             </button>
           </div>
         </div>
