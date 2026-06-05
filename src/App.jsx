@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import WORDS_BY_TOPIC from './data/topics'
+import endTimeSound from './sounds/EndTime.mp3'
+import wrongAnswerSound from './sounds/WrongAnswer.mp3'
 
 const TOPICS = Object.keys(WORDS_BY_TOPIC)
 const INITIAL_USED = TOPICS.reduce((acc, topic) => {
@@ -22,9 +24,14 @@ function App() {
   const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [spaceSecondsLeft, setSpaceSecondsLeft] = useState(5)
   const [isSpaceTimerRunning, setIsSpaceTimerRunning] = useState(false)
+  const [isSpaceModalOpen, setIsSpaceModalOpen] = useState(false)
+  const [isSpaceModalPending, setIsSpaceModalPending] = useState(false)
   const [score, setScore] = useState(0)
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false)
   const audioContextRef = useRef(null)
+  const endTimeAudioRef = useRef(null)
+  const wrongAnswerAudioRef = useRef(null)
+  const spaceModalTimeoutRef = useRef(null)
 
   const topicWords = useMemo(() => WORDS_BY_TOPIC[selectedTopic], [selectedTopic])
   const usedWords = usedWordsByTopic[selectedTopic]
@@ -69,15 +76,28 @@ function App() {
       return
     }
 
+    if (type === 'countdown-tick') {
+      playBeep(940, 0.09, 0.1)
+      return
+    }
+
     if (type === 'minute-end') {
-      playBeep(520, 0.16, 0.15)
-      playBeep(640, 0.2, 0.15, 0.2)
+      if (!endTimeAudioRef.current) {
+        endTimeAudioRef.current = new Audio(endTimeSound)
+      }
+
+      endTimeAudioRef.current.currentTime = 0
+      endTimeAudioRef.current.play().catch(() => {})
       return
     }
 
     if (type === 'time-end') {
-      playBeep(300, 0.18, 0.17)
-      playBeep(250, 0.32, 0.18, 0.2)
+      if (!wrongAnswerAudioRef.current) {
+        wrongAnswerAudioRef.current = new Audio(wrongAnswerSound)
+      }
+
+      wrongAnswerAudioRef.current.currentTime = 0
+      wrongAnswerAudioRef.current.play().catch(() => {})
     }
   }
 
@@ -111,20 +131,25 @@ function App() {
         if (prevSeconds <= 1) {
           setIsSpaceTimerRunning(false)
           playSound('time-end')
-
-          if (secondsLeft > 0 && currentWord) {
-            setIsTimerRunning(true)
-          }
-
-          return 5
+          return 0
         }
+
+        playSound('countdown-tick')
 
         return prevSeconds - 1
       })
     }, 1000)
 
     return () => clearInterval(intervalId)
-  }, [isSpaceTimerRunning, secondsLeft, currentWord])
+  }, [isSpaceTimerRunning])
+
+  useEffect(() => {
+    return () => {
+      if (spaceModalTimeoutRef.current) {
+        clearTimeout(spaceModalTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -135,32 +160,65 @@ function App() {
       if (event.code === 'Space') {
         event.preventDefault()
 
-        if (!isTimerRunning || isSpaceTimerRunning || secondsLeft === 0) {
+        if (
+          !isTimerRunning ||
+          isSpaceTimerRunning ||
+          isSpaceModalPending ||
+          isSpaceModalOpen ||
+          isRulesModalOpen ||
+          secondsLeft === 0
+        ) {
           return
         }
 
         playSound('space-click')
         setIsTimerRunning(false)
+        setIsSpaceModalPending(true)
         setSpaceSecondsLeft(5)
-        setIsSpaceTimerRunning(true)
+
+        spaceModalTimeoutRef.current = setTimeout(() => {
+          setIsSpaceModalOpen(true)
+          setIsSpaceTimerRunning(true)
+          setIsSpaceModalPending(false)
+          spaceModalTimeoutRef.current = null
+        }, 1000)
       }
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isTimerRunning, isSpaceTimerRunning, secondsLeft])
+  }, [
+    isTimerRunning,
+    isSpaceTimerRunning,
+    isSpaceModalPending,
+    isSpaceModalOpen,
+    isRulesModalOpen,
+    secondsLeft,
+  ])
 
   const handleTopicChange = (event) => {
+    if (spaceModalTimeoutRef.current) {
+      clearTimeout(spaceModalTimeoutRef.current)
+      spaceModalTimeoutRef.current = null
+    }
+
     setSelectedTopic(event.target.value)
     setCurrentWord('')
     setSecondsLeft(60)
     setIsTimerRunning(false)
     setIsSpaceTimerRunning(false)
+    setIsSpaceModalPending(false)
+    setIsSpaceModalOpen(false)
     setSpaceSecondsLeft(5)
     setScore(0)
   }
 
   const handleNewWord = () => {
+    if (spaceModalTimeoutRef.current) {
+      clearTimeout(spaceModalTimeoutRef.current)
+      spaceModalTimeoutRef.current = null
+    }
+
     const availableWords = topicWords.filter((word) => !usedWords.includes(word))
     const shouldResetTimer = secondsLeft === 0 || !currentWord
 
@@ -195,13 +253,34 @@ function App() {
       setSecondsLeft(60)
     }
     setIsSpaceTimerRunning(false)
+    setIsSpaceModalPending(false)
+    setIsSpaceModalOpen(false)
     setSpaceSecondsLeft(5)
     setIsTimerRunning(true)
   }
 
   const handleStopTimer = () => {
+    if (spaceModalTimeoutRef.current) {
+      clearTimeout(spaceModalTimeoutRef.current)
+      spaceModalTimeoutRef.current = null
+    }
+
     setIsTimerRunning(false)
     setIsSpaceTimerRunning(false)
+    setIsSpaceModalPending(false)
+    setIsSpaceModalOpen(false)
+    setSpaceSecondsLeft(5)
+  }
+
+  const handleCloseSpaceModal = () => {
+    if (spaceModalTimeoutRef.current) {
+      clearTimeout(spaceModalTimeoutRef.current)
+      spaceModalTimeoutRef.current = null
+    }
+
+    setIsSpaceModalOpen(false)
+    setIsSpaceTimerRunning(false)
+    setIsSpaceModalPending(false)
     setSpaceSecondsLeft(5)
   }
 
@@ -212,13 +291,19 @@ function App() {
   const statusText =
     secondsLeft === 0
       ? 'Tempo scaduto'
+      : isSpaceModalPending
+        ? 'Apertura pausa tra 1 secondo...'
       : isSpaceTimerRunning
-        ? 'Pausa Spazio attiva: al termine riparte il timer principale.'
+        ? 'Pausa Spazio attiva: attendi il conto alla rovescia nella modale.'
+      : isSpaceModalOpen
+        ? 'Tempo terminato.'
       : isTimerRunning
         ? 'Timer attivo'
         : currentWord
           ? 'Timer fermo con spazio. Premi Nuova parola per ripartire.'
           : 'Premi Nuova parola per iniziare.'
+
+  const countdownProgress = Math.max(0, Math.min(100, (spaceSecondsLeft / 5) * 100))
 
   return (
     <main className="app-shell">
@@ -284,14 +369,38 @@ function App() {
           </div>
         </div>
 
-        <div className="timer-panel">
-          <p className="timer-help">Premi Spazio per pausa da 5 secondi.</p>
-          {isSpaceTimerRunning && (
-            <p className="space-countdown">Pausa: {formatTime(spaceSecondsLeft)}</p>
-          )}
-          <p className="status-text">{statusText}</p>
-        </div>
       </section>
+
+      {isSpaceModalOpen && (
+        <div className="modal-overlay" role="presentation">
+          <section
+            className="countdown-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Countdown 5 secondi"
+          >
+            <button
+              type="button"
+              className="countdown-close-top"
+              onClick={handleCloseSpaceModal}
+              aria-label="Chiudi countdown"
+            >
+              X
+            </button>
+            <div
+              className="countdown-circle"
+              style={{ '--progress': `${countdownProgress}%` }}
+            >
+              <div className="countdown-circle-core">
+                <p className="countdown-value">{formatTime(spaceSecondsLeft)}</p>
+              </div>
+            </div>
+            {!isSpaceTimerRunning && (
+              <p className="countdown-help">Tempo terminato.</p>
+            )}
+          </section>
+        </div>
+      )}
 
       {isRulesModalOpen && (
         <div
