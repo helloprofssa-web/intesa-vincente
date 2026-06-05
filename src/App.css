@@ -189,6 +189,13 @@ button:active {
   font-size: 0.95rem;
 }
 
+.space-countdown {
+  margin: 0;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  color: var(--primary-2);
+  font-weight: 700;
+}
+
 .score-label {
   color: var(--ink-soft);
 }

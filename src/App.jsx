@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import WORDS_BY_TOPIC from './data/topics'
 
@@ -20,11 +20,66 @@ function App() {
   const [currentWord, setCurrentWord] = useState('')
   const [secondsLeft, setSecondsLeft] = useState(60)
   const [isTimerRunning, setIsTimerRunning] = useState(false)
+  const [spaceSecondsLeft, setSpaceSecondsLeft] = useState(5)
+  const [isSpaceTimerRunning, setIsSpaceTimerRunning] = useState(false)
   const [score, setScore] = useState(0)
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false)
+  const audioContextRef = useRef(null)
 
   const topicWords = useMemo(() => WORDS_BY_TOPIC[selectedTopic], [selectedTopic])
   const usedWords = usedWordsByTopic[selectedTopic]
+
+  const playBeep = (frequency, duration, volume = 0.15, when = 0) => {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextCtor) {
+      return
+    }
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextCtor()
+    }
+
+    const context = audioContextRef.current
+
+    if (context.state === 'suspended') {
+      context.resume()
+    }
+
+    const oscillator = context.createOscillator()
+    const gainNode = context.createGain()
+    const startAt = context.currentTime + when
+
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(frequency, startAt)
+
+    gainNode.gain.setValueAtTime(0.0001, startAt)
+    gainNode.gain.exponentialRampToValueAtTime(volume, startAt + 0.02)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + duration)
+
+    oscillator.connect(gainNode)
+    gainNode.connect(context.destination)
+
+    oscillator.start(startAt)
+    oscillator.stop(startAt + duration)
+  }
+
+  const playSound = (type) => {
+    if (type === 'space-click') {
+      playBeep(880, 0.13, 0.11)
+      return
+    }
+
+    if (type === 'minute-end') {
+      playBeep(520, 0.16, 0.15)
+      playBeep(640, 0.2, 0.15, 0.2)
+      return
+    }
+
+    if (type === 'time-end') {
+      playBeep(300, 0.18, 0.17)
+      playBeep(250, 0.32, 0.18, 0.2)
+    }
+  }
 
   useEffect(() => {
     if (!isTimerRunning) {
@@ -35,6 +90,7 @@ function App() {
       setSecondsLeft((prevSeconds) => {
         if (prevSeconds <= 1) {
           setIsTimerRunning(false)
+          playSound('minute-end')
           return 0
         }
 
@@ -46,6 +102,31 @@ function App() {
   }, [isTimerRunning])
 
   useEffect(() => {
+    if (!isSpaceTimerRunning) {
+      return undefined
+    }
+
+    const intervalId = setInterval(() => {
+      setSpaceSecondsLeft((prevSeconds) => {
+        if (prevSeconds <= 1) {
+          setIsSpaceTimerRunning(false)
+          playSound('time-end')
+
+          if (secondsLeft > 0 && currentWord) {
+            setIsTimerRunning(true)
+          }
+
+          return 5
+        }
+
+        return prevSeconds - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(intervalId)
+  }, [isSpaceTimerRunning, secondsLeft, currentWord])
+
+  useEffect(() => {
     const onKeyDown = (event) => {
       if (event.code === 'Escape') {
         setIsRulesModalOpen(false)
@@ -53,19 +134,29 @@ function App() {
 
       if (event.code === 'Space') {
         event.preventDefault()
+
+        if (!isTimerRunning || isSpaceTimerRunning || secondsLeft === 0) {
+          return
+        }
+
+        playSound('space-click')
         setIsTimerRunning(false)
+        setSpaceSecondsLeft(5)
+        setIsSpaceTimerRunning(true)
       }
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [isTimerRunning, isSpaceTimerRunning, secondsLeft])
 
   const handleTopicChange = (event) => {
     setSelectedTopic(event.target.value)
     setCurrentWord('')
     setSecondsLeft(60)
     setIsTimerRunning(false)
+    setIsSpaceTimerRunning(false)
+    setSpaceSecondsLeft(5)
     setScore(0)
   }
 
@@ -103,11 +194,15 @@ function App() {
     if (shouldResetTimer) {
       setSecondsLeft(60)
     }
+    setIsSpaceTimerRunning(false)
+    setSpaceSecondsLeft(5)
     setIsTimerRunning(true)
   }
 
   const handleStopTimer = () => {
     setIsTimerRunning(false)
+    setIsSpaceTimerRunning(false)
+    setSpaceSecondsLeft(5)
   }
 
   const handleResetScore = () => {
@@ -117,6 +212,8 @@ function App() {
   const statusText =
     secondsLeft === 0
       ? 'Tempo scaduto'
+      : isSpaceTimerRunning
+        ? 'Pausa Spazio attiva: al termine riparte il timer principale.'
       : isTimerRunning
         ? 'Timer attivo'
         : currentWord
@@ -188,7 +285,10 @@ function App() {
         </div>
 
         <div className="timer-panel">
-          <p className="timer-help">Premi Spazio per fermare il timer.</p>
+          <p className="timer-help">Premi Spazio per pausa da 5 secondi.</p>
+          {isSpaceTimerRunning && (
+            <p className="space-countdown">Pausa: {formatTime(spaceSecondsLeft)}</p>
+          )}
           <p className="status-text">{statusText}</p>
         </div>
       </section>
